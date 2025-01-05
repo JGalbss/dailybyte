@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { FastifyInstance } from 'fastify';
 import AutoLoad from '@fastify/autoload';
+import cors from '@fastify/cors';
 import { ProblemGenerationScheduler } from './modules/problem-generation/problem-scheduler.service';
 import { ProblemGenerationWorker } from './modules/problem-generation/problem-gen.worker';
 import { ProblemGenerationService } from './modules/problem-generation/problem-gen.service';
@@ -9,9 +10,12 @@ import { ProblemGenerationService } from './modules/problem-generation/problem-g
 export interface AppOptions {}
 
 export async function app(fastify: FastifyInstance, opts: AppOptions) {
-  // Place here your custom code!
-
-  // Do not touch the following lines
+  await fastify.register(cors, {
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type'],
+    credentials: true,
+  });
 
   // This loads all plugins defined in plugins
   // those should be support plugins that are reused

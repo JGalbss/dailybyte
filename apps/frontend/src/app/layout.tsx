@@ -1,3 +1,4 @@
+import { ClientLayout } from '../components/ClientLayout';
 import './global.css';
 
 export const metadata = {
@@ -6,14 +7,12 @@ export const metadata = {
     'Dailybyte: Daily 5-minute coding challenges to improve your programming skills. Fun, quick and consistent practice with instant feedback. Level up your coding abilities one byte-sized challenge at a time.',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="h-screen w-screen">
+        <ClientLayout>{children}</ClientLayout>
+      </body>
     </html>
   );
 }

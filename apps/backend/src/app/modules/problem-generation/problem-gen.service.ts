@@ -187,24 +187,22 @@ Based on this plan, create a coding problem that:
 
 Please provide:
 - A clever title that incorporates both the technical concept and a pun or wordplay
-- An engaging problem description including:
+- An engaging problem description in markdown format including:
   - A clear scenario/backstory
   - Technical requirements and constraints
   - Input/output specifications with sample cases
-  - At least one detailed example
+  - At least one detailed example with code blocks
   - JavaScript-specific implementation details
   - Time/space complexity requirements
 
 Format the response as a JSON object with:
 {
-  "title": "Your title here",
-  "description": "Full problem description here"
+  "title": "Your title here", 
+  "description": "# Problem Title\n\n[Problem description in markdown format]\n\n## Examples\n\n\`\`\`javascript\n// Code examples\n\`\`\`\n\n## Constraints\n\n- Time complexity: O(n)\n- Space complexity: O(1)\n\n## Notes\n\n[Additional notes in markdown]"
 }
 
-Remember: The problem should be technically sound and appropriate for a technical interview, while following the educational objectives and implementation strategy from the plan.`,
+Remember: The problem should be technically sound and appropriate for a technical interview, while following the educational objectives and implementation strategy from the plan. The markdown formatting is crucial for proper display - use proper headers, code blocks, lists and other markdown elements to ensure clear readability.`,
     });
-
-    console.log(problemGeneration);
 
     return problemGeneration as ProblemGeneration;
   }

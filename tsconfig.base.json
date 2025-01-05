@@ -15,6 +15,7 @@
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
+      "@dailybyte/leetcode": ["libs/leetcode/src/index.ts"],
       "@dailybyte/shared": ["libs/shared/src/index.ts"]
     }
   },

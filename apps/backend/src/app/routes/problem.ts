@@ -25,7 +25,8 @@ const SubmitSolutionSchema = {
   response: {
     200: Type.Object({
       success: Type.Boolean(),
-      results: Type.Array(Type.Any()),
+      submission: Type.Any(),
+      attemptCount: Type.Number(),
     }),
   },
 };
@@ -79,18 +80,38 @@ export default async function (fastify: FastifyInstance) {
           testCases,
         });
 
-        await db.from('submissions').insert({
-          problem_id: problemId,
-          code,
-          language: Languages.JavaScript,
-          status: results.success ? 'success' : 'failed',
-          memory_used: results.isolateMetrics?.memoryUsedKb,
-          time_used_ms: results.isolateMetrics?.cpuTimeMs,
-          submitted_at: new Date().toISOString(),
-          user_id: 'test',
-        });
+        console.log(results);
 
-        return { success: true, results };
+        const submission = await db
+          .from('submissions')
+          .insert({
+            problem_id: problemId,
+            code,
+            language: Languages.JavaScript,
+            status: results.success ? 'success' : 'failed',
+            memory_used: results.isolateMetrics?.memoryUsedKb || 0,
+            time_used_ms: results.isolateMetrics?.cpuTimeMs || 0,
+            submitted_at: new Date().toISOString(),
+            user_id: 'd9476e23-72ee-4630-9df2-44f8f7e5b914',
+          })
+          .select()
+          .single();
+
+        console.log(submission);
+
+        const attemptCount = await db
+          .from('submissions')
+          .select('*', { count: 'exact' })
+          .eq('problem_id', problemId)
+          .eq('user_id', 'd9476e23-72ee-4630-9df2-44f8f7e5b914');
+
+        console.log(attemptCount.count);
+
+        return {
+          success: true,
+          submission,
+          attemptCount: attemptCount.count,
+        };
       },
     });
 
