@@ -1,4 +1,4 @@
-import { SystemProp } from '../../core/system';
+import { system, SystemProp } from '../../core/system';
 
 // lmao ya i know but im bored, reccomend not putting a fetch in a constants file
 export const getNewsHeadlines = async (): Promise<

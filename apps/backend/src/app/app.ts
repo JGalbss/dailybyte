@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { FastifyInstance } from 'fastify';
 import AutoLoad from '@fastify/autoload';
-import { ProblemSchedulerService } from './modules/problem-generation/problem-scheduler.service';
+import { ProblemGenerationScheduler } from './modules/problem-generation/problem-scheduler.service';
 import { ProblemGenerationWorker } from './modules/problem-generation/problem-gen.worker';
 import { ProblemGenerationService } from './modules/problem-generation/problem-gen.service';
 
@@ -31,6 +31,10 @@ export async function app(fastify: FastifyInstance, opts: AppOptions) {
   // start the worker
   const problemGenerationService = new ProblemGenerationService(fastify);
   const problemGenerationWorker = new ProblemGenerationWorker(problemGenerationService, fastify);
+  const scheduler = new ProblemGenerationScheduler(fastify);
+
+  // schedule the daily problem generation for 10:00 AM EST
+  await scheduler.scheduleDaily();
 
   fastify.addHook('onClose', async () => {
     await problemGenerationWorker.close();

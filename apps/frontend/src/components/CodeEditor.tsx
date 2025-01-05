@@ -1,6 +1,6 @@
 import { Languages } from '@dailybyte/shared';
 import Editor from '@monaco-editor/react';
-import { Button } from './button';
+import { Button } from './Button';
 import { useState } from 'react';
 
 export const CodeEditor = () => {

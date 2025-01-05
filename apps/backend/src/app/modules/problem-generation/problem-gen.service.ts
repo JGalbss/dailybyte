@@ -7,6 +7,7 @@ import { generateObject, generateText } from 'ai';
 import { ExecutionResult, TestCaseSchema } from '../../schemas';
 import { codeExecutor } from '../code-executor';
 import { validateAndSanitizeCode } from '../code-executor/utils';
+import { db } from '../../core/supabase';
 
 interface Topic {
   theme: { title: string; description: string };
@@ -51,8 +52,59 @@ export class ProblemGenerationService {
       const testCases = await this.generateTestCases(problem);
       const solutionPlan = await this.solutionPlan(problem);
       const solution = await this.generateSolution(problem, testCases, solutionPlan);
+      const explanation = await this.solutionExplanation(solution, problem, testCases);
 
-      console.log(solution);
+      // now insert problem to launch at 12pm EST
+      const { data: problemData, error: problemError } = await db
+        .from('problems')
+        .insert({
+          title: problem.title,
+          description: problem.description,
+          launch_date: new Date(new Date().setHours(12, 0, 0, 0)).toISOString(),
+          slug: problem.title.toLowerCase().replace(/ /g, '-'),
+        })
+        .select()
+        .single();
+
+      if (!problemData || problemError) {
+        throw new Error('Failed to insert problem');
+      }
+
+      // insert the test cases
+      const testCaseInserts = testCases.map((testCase) =>
+        db
+          .from('testcases')
+          .insert({
+            problem_id: problemData.id,
+            input: JSON.stringify(testCase.input),
+            expected: JSON.stringify(testCase.expectedOutput),
+          })
+          .select()
+          .single(),
+      );
+
+      const results = await Promise.all(testCaseInserts);
+      const testCasesError = results.find((result) => result.error)?.error;
+      const testCasesData = results.map((result) => result.data);
+
+      if (!testCasesData || testCasesError) {
+        throw new Error('Failed to insert test cases');
+      }
+
+      // now insert a solution to the problem
+      const { data: solutionData, error: solutionError } = await db
+        .from('solutions')
+        .insert({
+          problem_id: problemData.id,
+          solution: solution,
+          explanation: explanation,
+        })
+        .select();
+
+      if (!solutionData || solutionError) {
+        throw new Error('Failed to insert solution');
+      }
+
       this.fastify.log.info('Successfully generated daily problem');
     } catch (err) {
       this.fastify.log.error('Failed to generate daily problem:', err);
@@ -311,7 +363,6 @@ function solution(input) {
     });
 
     const cleanedSolution = validateAndSanitizeCode(solution);
-    console.log(cleanedSolution);
     const executionResult = await this.evaluateSolution(cleanedSolution, testCases);
 
     const { success, testCaseResults, logs } = executionResult;
@@ -363,5 +414,47 @@ function solution(input) {
         isolateMetrics: { cpuTimeMs: 0, wallTimeMs: 0, memoryUsedKb: 0 },
       };
     }
+  }
+
+  async solutionExplanation(
+    solution: string,
+    problem: ProblemGeneration,
+    testCases: TestCase[],
+  ): Promise<string> {
+    const { text: explanation } = await generateText({
+      model: openai('o1-mini'),
+      prompt: `Write a detailed LeetCode-style solution explanation for this coding problem.
+
+Problem:
+${problem.title}
+${problem.description}
+
+Solution Code:
+${solution}
+
+Example Test Cases:
+${testCases
+  .map(
+    (tc, i) => `
+Test Case ${i + 1}:
+Input: ${JSON.stringify(tc.input)}
+Expected Output: ${JSON.stringify(tc.expectedOutput)}
+Description: ${tc.description}
+`,
+  )
+  .join('\n')}
+
+Please explain:
+1. The intuition/approach behind the solution
+2. A step-by-step walkthrough of how the code works
+3. The time and space complexity analysis
+4. Any key insights or patterns used
+5. Alternative approaches that could work
+6. Common pitfalls to avoid
+
+Format the explanation clearly with headers and code examples where relevant.`,
+    });
+
+    return explanation;
   }
 }
