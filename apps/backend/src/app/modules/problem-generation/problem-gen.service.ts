@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { getNewsHeadlines, PROBLEM_TOPICS } from './topics';
+import { getNewsHeadlines } from './topics';
 import z from 'zod';
 import { Languages } from '@dailybyte/shared';
 import { openai } from '@ai-sdk/openai';
@@ -8,11 +8,11 @@ import { ExecutionResult, TestCaseSchema } from '../../schemas';
 import { codeExecutor } from '../code-executor';
 import { validateAndSanitizeCode } from '../code-executor/utils';
 import { db } from '../../core/supabase';
+import { getRandomProblem, LeetCodeProblem } from './leetcode';
 
 interface Topic {
   theme: { title: string; description: string };
-  topic: string;
-  category: keyof typeof PROBLEM_TOPICS;
+  problem: LeetCodeProblem;
 }
 
 const problemGenerationSchema = z
@@ -47,11 +47,9 @@ export class ProblemGenerationService {
   async generateDailyProblem(): Promise<void> {
     try {
       const topic = await this.generateTopic();
-      const plan = await this.generatePlan(topic);
-      const problem = await this.generateProblem(plan);
-      const testCases = await this.generateTestCases(problem);
-      const solutionPlan = await this.solutionPlan(problem);
-      const solution = await this.generateSolution(problem, testCases, solutionPlan);
+      const problem = await this.generateProblem(topic);
+      const solution = await this.generateSolution(topic);
+      const testCases = await this.generateTestCases(topic.problem, solution);
       const explanation = await this.solutionExplanation(solution, problem, testCases);
 
       // now insert problem to launch at 12pm EST
@@ -113,87 +111,51 @@ export class ProblemGenerationService {
   }
 
   async generateTopic(): Promise<Topic> {
-    const categories = Object.keys(PROBLEM_TOPICS) as Array<keyof typeof PROBLEM_TOPICS>;
-    const randomCategory = categories[Math.floor(Math.random() * categories.length)];
-
-    const topicsInCategory = PROBLEM_TOPICS[randomCategory];
-    const randomTopic = topicsInCategory[Math.floor(Math.random() * topicsInCategory.length)];
-
     const news = await getNewsHeadlines();
     const selectedNews = news[Math.floor(Math.random() * news.length)];
+    const problem = await getRandomProblem();
 
     return {
       theme: selectedNews,
-      topic: randomTopic,
-      category: randomCategory,
+      problem: problem,
     };
   }
 
-  async generatePlan(topic: Topic): Promise<string> {
-    const { text: plan } = await generateText({
-      model: openai('o1-mini'),
-      prompt: `Create a detailed plan for developing a LeetCode-style coding problem that combines ${topic.topic} from the ${topic.category} category with themes from this news headline: "${topic.theme.title}".
-
-The plan should outline:
-
-1. Core Technical Components:
-- How to incorporate the ${topic.category} concepts effectively
-- What specific aspects of ${topic.topic} should be tested
-- Key algorithms and data structures needed
-- Edge cases to consider
-- Time/space complexity targets
-
-2. Problem Structure:
-- How to frame the technical challenge within the news context
-- Input/output format design
-- Test case progression (easy -> complex)
-- Common pitfalls to include
-- Optimization opportunities
-
-3. Educational Value:
-- Key learning objectives
-- Common misconceptions to address
-- Helpful hints or examples to provide
-- Related problems or concepts to reference
-
-4. Implementation Strategy:
-- JavaScript-specific considerations
-- Input validation requirements
-- Error handling approach
-- Performance constraints
-
-Please provide a structured outline of these elements to guide problem creation.`,
-    });
-
-    return plan;
-  }
-
-  async generateProblem(plan: string): Promise<ProblemGeneration> {
+  async generateProblem(topic: Topic): Promise<ProblemGeneration> {
     const { object: problemGeneration } = await generateObject({
       model: openai('gpt-4o'),
       schema: problemGenerationSchema,
       prompt: `You are a witty software engineer creating an engaging yet challenging JavaScript coding problem.
 
-Follow this plan to create the problem:
+I'll provide you with a LeetCode problem and a news headline. Your task is to rewrite the LeetCode problem to incorporate themes from the news headline while preserving the core technical challenge.
 
-${plan}
+Original LeetCode Problem:
+${topic.problem.description}
 
-Based on this plan, create a coding problem that:
-- Follows the technical components and structure outlined above
+
+News Theme to Incorporate:
+Title: ${topic.theme.title}
+Description: ${topic.theme.description}
+
+Important: The underlying technical solution (${topic.problem.solution}) must still work for your rewritten problem. The goal is to make the problem more engaging and fun while keeping the same logical structure.
+
+Create a coding problem that:
+- Maintains the exact same technical requirements and solution approach as the original LeetCode problem
+- Creatively incorporates elements from the news headline into the problem narrative
 - Is challenging but solvable in 45-60 minutes
-- Has clear input/output specifications
+- Has clear input/output specifications matching the original problem
 - Uses JavaScript-specific features and best practices
-- Considers JavaScript's type system and common pitfalls
+- Includes witty references or wordplay related to the news theme
 
 Please provide:
-- A clever title that incorporates both the technical concept and a pun or wordplay
+- A clever title that combines the technical concept with the news theme
 - An engaging problem description in markdown format including:
-  - A clear scenario/backstory
-  - Technical requirements and constraints
+  - A backstory that weaves in the news theme
+  - Technical requirements and constraints (matching the original problem)
   - Input/output specifications with sample cases
   - At least one detailed example with code blocks
   - JavaScript-specific implementation details
-  - Time/space complexity requirements
+  - Time/space complexity requirements (matching the original problem)
 
 Format the response as a JSON object with:
 {
@@ -201,217 +163,98 @@ Format the response as a JSON object with:
   "description": "# Problem Title\n\n[Problem description in markdown format]\n\n## Examples\n\n\`\`\`javascript\n// Code examples\n\`\`\`\n\n## Constraints\n\n- Time complexity: O(n)\n- Space complexity: O(1)\n\n## Notes\n\n[Additional notes in markdown]"
 }
 
-Remember: The problem should be technically sound and appropriate for a technical interview, while following the educational objectives and implementation strategy from the plan. The markdown formatting is crucial for proper display - use proper headers, code blocks, lists and other markdown elements to ensure clear readability.`,
+Remember: While making the problem more engaging with the news theme, it's crucial that the technical challenge and solution approach remain identical to the original LeetCode problem. The solution code must work for both the original and your rewritten version.`,
     });
 
     return problemGeneration as ProblemGeneration;
   }
 
-  async generateTestCases(problem: ProblemGeneration): Promise<TestCase[]> {
-    const { object: response } = await generateObject({
+  async generateTestCases(problem: LeetCodeProblem, solution: string): Promise<TestCase[]> {
+    const { object: testCases } = await generateObject({
       model: openai('gpt-4o'),
-      schema: z
-        .object({
-          testCases: z.array(testCaseSchema),
-        })
-        .strict(),
-      prompt: `Generate a comprehensive set of test cases for the following coding problem:
-
-Title: ${problem.title}
-Description: ${problem.description}
-
-Please create test cases that:
-1. Cover basic/simple scenarios
-2. Include edge cases and corner cases
-3. Test boundary conditions
-4. Include complex scenarios that thoroughly test the solution
-5. Have descriptive names explaining what each test case verifies
-
-IMPORTANT: Only include test cases where you are completely confident about both the input and expected output. If you have any uncertainty about the expected behavior, omit that test case.
-
-For each test case, provide:
-- Input values
-- Expected output
-- A brief description of what the test case is checking
-
-Input and output values must be valid JavaScript values that can be directly passed to functions.
-Valid formats include:
-- Numbers (e.g., 42, -1, 3.14)
-- Strings (e.g., "hello", "test")
-- Arrays (e.g., [1, 2, 3], ["a", "b"])
-- Objects (e.g., { key: "value" })
-- Booleans (true/false)
-- null
-
-Do not include functions or undefined values in inputs or outputs.
-Do not include any test cases where you are unsure about the expected output.
-
-Format as a JSON object with a testCases array:
-{
-  "testCases": [
-    {
-      "input": <input value>,
-      "expectedOutput": <expected output>,
-      "description": "Description of what this test verifies"
-    }
-  ]
-}
-
-Generate at least 5 test cases covering a wide range of scenarios, but only include cases where you can determine the correct output with absolute certainty.`,
-    });
-
-    return response.testCases.map((testCase) => ({
-      input: testCase.input,
-      expectedOutput: testCase.expectedOutput,
-      description: testCase.description,
-    }));
-  }
-
-  async solutionPlan(problem: ProblemGeneration): Promise<string> {
-    const { text: plan } = await generateText({
-      model: openai('o1-mini'),
-      prompt: `Create a detailed solution plan for: ${problem.title}
-
-Please include:
-
-1. Analysis of edge cases and constraints:
-   - Input validation and error handling
-   - Boundary conditions to consider
-   - Special cases that need handling
-   - Input size limitations and performance implications
-
-2. Time and space complexity requirements:
-   - Target runtime complexity
-   - Memory usage constraints 
-   - Tradeoffs between different approaches
-
-3. Data structure selection:
-   - Recommended data structures
-   - Justification for choices
-   - Space/time tradeoffs
-
-4. Algorithm approach:
-   - High-level solution strategy
-   - Key steps in the algorithm
-   - How to handle the identified edge cases
-   - Any preprocessing needed
-
-5. Optimization opportunities:
-   - Areas for performance improvement
-   - Caching or memoization potential
-   - Early termination conditions
-
-6. Implementation considerations:
-   - Helper functions needed
-   - Important variables to track
-   - Error checking points
-   - Input validation approach
-
-Please provide a structured plan addressing all these aspects to guide the implementation.`,
-    });
-
-    return plan;
-  }
-  async generateSolution(
-    problem: ProblemGeneration,
-    testCases: TestCase[],
-    solutionPlan: string,
-    error?: string,
-    attempt: number = 1,
-    previousErrors: string[] = [],
-    previousSolution?: string,
-  ): Promise<string> {
-    if (attempt > 5) {
-      throw new Error(
-        `Failed to generate valid solution after 3 attempts. Errors encountered: ${previousErrors.join(
-          ' | ',
-        )}`,
-      );
-    }
-
-    const { text: solution } = await generateText({
-      model: openai('gpt-4o'),
-      prompt: `${problem.title}
-
+      schema: z.array(testCaseSchema),
+      prompt: `Given this problem:
+${problem.title}
 ${problem.description}
 
-Solution Plan:
-${solutionPlan}
+And this solution code:
+${solution}
 
-Test Cases:
-${testCases
-  .map(
-    (testCase) => `
-Input: ${JSON.stringify(testCase.input)}
-Expected Output: ${JSON.stringify(testCase.expectedOutput)}
-Description: ${testCase.description}`,
-  )
-  .join('\n')}
+Generate 5-10 diverse test cases that thoroughly test the solution. Include:
+- Edge cases (empty input, boundary values, etc)
+- Common cases
+- Complex cases that test multiple aspects
 
-${error ? `Previous errors:\n${[...previousErrors, error].join('\n')}` : ''}
-${previousSolution ? `\nPrevious solution that failed:\n${previousSolution}` : ''}
+For each test case provide:
+- Input value(s) that match the solution's parameter types
+- A description explaining what the test case is checking
 
-IMPORTANT: The input parameter will be passed directly as a JavaScript value. DO NOT parse it with JSON.parse().
+Format as an array of test case objects:
+[
+  {
+    "input": <input value>,
+    "expectedOutput": null,
+    "description": "Description of what this test case checks"
+  }
+]
 
-Return ONLY the solution function with NO MARKDOWN FENCING OR ADDITIONAL TEXT. For example:
-function solution(input) {
-  const result = input.map(x => x * 2);
-  return result;
-}`,
+The input values should be valid JavaScript that matches the solution's parameter types.`,
     });
 
-    const cleanedSolution = validateAndSanitizeCode(solution);
-    const executionResult = await this.evaluateSolution(cleanedSolution, testCases);
+    // Execute each test case through the solution to get expected outputs
+    const testCasesWithOutputs = await Promise.all(
+      testCases.map(async (testCase) => {
+        const result = await codeExecutor.execute({
+          code: solution,
+          language: Languages.JavaScript,
+          testCases: [{ input: testCase.input }],
+        });
 
-    const { success, testCaseResults, logs } = executionResult;
+        return {
+          input: testCase.input,
+          expectedOutput: result.output?.[0],
+          description: testCase.description,
+        } satisfies TestCase;
+      }),
+    );
 
-    if (!success) {
-      const failedTests = testCaseResults
-        .map((result, index) => (!result.success ? index : null))
-        .filter((index): index is number => index !== null);
-
-      const errorLogs = logs.length > 0 ? `\nExecution logs: ${logs.join('\n')}` : '';
-      const newError = `Attempt ${attempt}: Solution failed test cases ${failedTests.join(
-        ', ',
-      )}. Please review the requirements and try again.${errorLogs}`;
-
-      return this.generateSolution(
-        problem,
-        testCases,
-        solutionPlan,
-        newError,
-        attempt + 1,
-        error ? [...previousErrors, error] : previousErrors,
-        cleanedSolution,
-      );
-    }
-
-    return cleanedSolution;
+    return testCasesWithOutputs;
   }
 
-  async evaluateSolution(solution: string, testCases: TestCase[]): Promise<ExecutionResult> {
-    try {
-      const result = await codeExecutor.execute({
-        code: solution,
-        language: Languages.JavaScript,
-        testCases: testCases.map((testCase) => ({
-          input: testCase.input,
-          expected: testCase.expectedOutput,
-        })),
-      });
+  async generateSolution(topic: Topic): Promise<string> {
+    const { text: formattedSolution } = await generateText({
+      model: openai('gpt-4o'),
+      prompt: `Given this coding problem:
 
-      return result;
-    } catch (err) {
-      this.fastify.log.error('Error evaluating solution:', err);
-      return {
-        success: false,
-        output: [],
-        logs: [err instanceof Error ? err.message : String(err)],
-        executionTime: 0,
-        testCaseResults: [],
-        isolateMetrics: { cpuTimeMs: 0, wallTimeMs: 0, memoryUsedKb: 0 },
-      };
-    }
+${topic.problem.title}
+${topic.problem.description}
+
+And this solution:
+${topic.problem.solution}
+
+Please rewrite the solution to:
+1. Have a main function named 'solution' that takes a single 'input' parameter
+2. Keep any helper functions but ensure they are properly scoped
+3. Maintain the same logic but format it according to the required structure
+
+The output should be in this format:
+function solution(input) {
+  // Main solution logic
+  return output;
+}
+
+// Any helper functions if needed
+function helperFunction() {
+  // Helper logic
+}
+
+Return ONLY the solution code with NO markdown or additional text.`,
+    });
+
+    // Extract and format the solution function
+    return validateAndSanitizeCode(formattedSolution)
+      .replace(/```[^\n]*\n|```$/g, '')
+      .trim();
   }
 
   async solutionExplanation(

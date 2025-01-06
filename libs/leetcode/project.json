@@ -5,12 +5,13 @@
   "projectType": "library",
   "targets": {
     "build": {
-      "executor": "@nx/js:tsc",
+      "executor": "@nx/esbuild:esbuild",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/libs/leetcode",
-        "main": "libs/leetcode/src/index.ts",
+        "main": "libs/leetcode/src/index.js",
         "tsConfig": "libs/leetcode/tsconfig.lib.json",
+        "format": ["cjs"],
         "assets": ["libs/leetcode/*.md"]
       }
     }

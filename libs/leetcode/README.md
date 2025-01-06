@@ -1,6 +1,6 @@
-# leetcode
+# LeetCode Solutions
 
-This library was generated with [Nx](https://nx.dev).
+This library contains JavaScript/TypeScript solutions for LeetCode problems. It is forked from [leetcode-js](https://github.com/everthis/leetcode-js) - all credit for the original solutions goes to everthis and other contributors.
 
 ## Building
 

@@ -7,6 +7,7 @@ export enum SystemProp {
   SUPABASE_SERVICE_ROLE_KEY = 'SUPABASE_SERVICE_ROLE_KEY',
   REDIS_URL = 'REDIS_URL',
   NEWS_API_KEY = 'NEWS_API_KEY',
+  SCRAPFLY_API_KEY = 'SCRAPFLY_API_KEY',
 }
 
 const systemPropDefaultValues: Partial<Record<SystemProp, string>> = {};

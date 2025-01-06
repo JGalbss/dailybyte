@@ -34,6 +34,7 @@
     "react-dom": "18.2.0",
     "react-markdown": "^9.0.1",
     "react-resizable-panels": "^2.1.7",
+    "scrapfly-sdk": "^0.6.9",
     "tailwind-merge": "^2.6.0",
     "tw-merge": "^0.0.1-alpha.3",
     "uuid": "^11.0.3",
